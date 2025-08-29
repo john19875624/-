@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Fullcast Job to Calendar (Enhanced)
+// @name         Fullcast Job to Calendar (Enhanced - Night Shift Fixed)
 // @namespace    http://tampermonkey.net/
-// @version      2.5
-// @description  フルキャストの求人詳細ページから勤務情報を抽出し、カレンダー登録用のURLを生成します。
+// @version      2.6
+// @description  フルキャストの求人詳細ページから勤務情報を抽出し、カレンダー登録用のURLを生成します。夜勤対応版
 // @author       Enhanced
 // @match        https://fullcast.jp/flinkccpc/sc/ucas1008/*
 // @grant        none
@@ -321,6 +321,39 @@
      */
     class CalendarUrlGenerator {
         /**
+         * 夜勤判定: 終了時刻が開始時刻より早い場合は夜勤
+         */
+        static isNightShift(startTime, endTime) {
+            const [startHour, startMin] = startTime.split(':').map(Number);
+            const [endHour, endMin] = endTime.split(':').map(Number);
+            
+            const startMinutes = startHour * 60 + startMin;
+            const endMinutes = endHour * 60 + endMin;
+            
+            return endMinutes < startMinutes;
+        }
+
+        /**
+         * 日付に1日加算
+         */
+        static addOneDay(dateStr) {
+            try {
+                const [year, month, day] = dateStr.split('/').map(Number);
+                const date = new Date(year, month - 1, day);
+                date.setDate(date.getDate() + 1);
+                
+                const newYear = date.getFullYear();
+                const newMonth = String(date.getMonth() + 1).padStart(2, '0');
+                const newDay = String(date.getDate()).padStart(2, '0');
+                
+                return `${newYear}/${newMonth}/${newDay}`;
+            } catch (error) {
+                console.error('日付加算エラー:', error);
+                return dateStr;
+            }
+        }
+
+        /**
          * 日付と時間をGoogleカレンダー形式にフォーマット
          */
         static formatDateTime(date, time) {
@@ -360,19 +393,36 @@
         }
 
         /**
-         * Googleカレンダー登録URLを生成
+         * Googleカレンダー登録URLを生成（夜勤対応版）
          */
         static generateCalendarUrl(eventData) {
             try {
                 const { title, eventDate, startTime, endTime, notes, locationUrl } = eventData;
                 
-                const startDateTime = this.formatDateTime(eventDate, startTime);
-                const endDateTime = this.formatDateTime(eventDate, endTime);
+                // 夜勤判定
+                const isNight = this.isNightShift(startTime, endTime);
+                console.log(`夜勤判定: ${isNight ? '夜勤' : '日勤'} (${startTime} - ${endTime})`);
+                
+                // 開始日時と終了日時を計算
+                let startDate = eventDate;
+                let endDate = eventDate;
+                
+                if (isNight) {
+                    // 夜勤の場合、終了時刻は翌日
+                    endDate = this.addOneDay(eventDate);
+                    console.log(`夜勤のため終了日を翌日に設定: ${endDate}`);
+                }
+                
+                const startDateTime = this.formatDateTime(startDate, startTime);
+                const endDateTime = this.formatDateTime(endDate, endTime);
 
                 if (!startDateTime || !endDateTime) {
                     console.error('日時のフォーマットに失敗しました');
                     return '';
                 }
+
+                console.log(`開始日時: ${startDateTime}`);
+                console.log(`終了日時: ${endDateTime}`);
 
                 const params = new URLSearchParams({
                     action: 'TEMPLATE',
@@ -437,7 +487,7 @@
          * アプリケーション実行
          */
         static run() {
-            console.log('🚀 Fullcast Calendar App (Enhanced Version) を開始します...');
+            console.log('🚀 Fullcast Calendar App (夜勤対応版) を開始します...');
             
             try {
                 // 要素チェック
