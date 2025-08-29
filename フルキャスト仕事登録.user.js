@@ -4,7 +4,7 @@
 // @version      2.0
 // @description  フルキャストの求人詳細ページから勤務情報を抽出し、カレンダー登録用のURLを生成します。
 // @author       Refactored
-// @match        https://fullcast.jp/flinkccpc/sc/*
+// @match        https://fullcast.jp/flinkccpc/sc/ucas1008/*
 // @grant        none
 // ==/UserScript==
 
