@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Fullcast Job to Calendar
+// @name         Fullcast Job to Calendar (Fixed)
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.4
 // @description  フルキャストの求人詳細ページから勤務情報を抽出し、カレンダー登録用のURLを生成します。
 // @author       Refactored
 // @match        https://fullcast.jp/flinkccpc/sc/ucas1008/*
@@ -12,15 +12,14 @@
     'use strict';
 
     /**
-     * セレクタ定義
+     * セレクタ定義 - :contains()セレクタを一切使用しない
      */
     const SELECTORS = {
-        WORK_PERIOD: '.job-detail-row:has(.job-detail-term) div',
-        WORK_TIME: '.job-detail-row:has(.job-detail-time) div',
+        WORK_PERIOD: '.recruit-detail-box .job-detail-row:has(.job-detail-term) div',
+        WORK_TIME: '.recruit-detail-box .job-detail-row:has(.job-detail-time) div',
         JOB_TITLE: '.job-title.mt-2',
-        MAP_URL: '.job-traffic-info-box a.map',
-        BELONGINGS: 'th:contains("持ち物") + td',
-        CLOTHING: 'th:contains("服装") + td',
+        MAP_URL: '.recruit-detail-box .job-traffic-info-box a.map',
+        TABLE_HEADERS: '.recruit-detail-box th',
         CONTAINER: '.recruit-detail-box'
     };
 
@@ -45,23 +44,34 @@
      */
     class ElementChecker {
         static checkElements() {
+            console.log('=== 要素存在チェック開始 ===');
+            
             const checks = [
                 { name: '勤務期間', selector: SELECTORS.WORK_PERIOD },
                 { name: '勤務時間', selector: SELECTORS.WORK_TIME },
                 { name: 'タイトル', selector: SELECTORS.JOB_TITLE },
                 { name: '地図URL', selector: SELECTORS.MAP_URL },
-                { name: '持ち物', selector: SELECTORS.BELONGINGS },
-                { name: '服装', selector: SELECTORS.CLOTHING }
+                { name: 'テーブルヘッダー', selector: SELECTORS.TABLE_HEADERS }
             ];
 
             checks.forEach(({ name, selector }) => {
-                const element = document.querySelector(selector);
-                if (element) {
-                    console.log(`✅ ${name} (${selector}) が正常に読み込めました。`);
-                } else {
-                    console.error(`❌ ${name} (${selector}) が見つかりませんでした。`);
+                try {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        console.log(`✅ ${name} が見つかりました`);
+                        console.log(`   セレクタ: ${selector}`);
+                        console.log(`   内容: ${element.textContent?.trim().substring(0, 50)}...`);
+                    } else {
+                        console.warn(`⚠️ ${name} が見つかりませんでした`);
+                        console.log(`   セレクタ: ${selector}`);
+                    }
+                } catch (error) {
+                    console.error(`❌ ${name} のセレクタエラー:`, error);
+                    console.log(`   セレクタ: ${selector}`);
                 }
             });
+            
+            console.log('=== 要素存在チェック終了 ===');
         }
     }
 
@@ -73,58 +83,131 @@
          * 勤務期間（日付）を抽出
          */
         static extractEventDate() {
-            const dateElement = document.querySelector(SELECTORS.WORK_PERIOD);
-            if (!dateElement) return '';
+            try {
+                const dateElement = document.querySelector(SELECTORS.WORK_PERIOD);
+                if (!dateElement) {
+                    console.warn('勤務期間要素が見つかりませんでした');
+                    return '';
+                }
 
-            const dateText = dateElement.textContent.trim().split('(')[0];
-            const year = new Date().getFullYear();
-            return dateText ? `${year}/${dateText.replace(/ /g, '')}` : '';
+                const dateText = dateElement.textContent.trim().split('(')[0];
+                const year = new Date().getFullYear();
+                const result = dateText ? `${year}/${dateText.replace(/ /g, '')}` : '';
+                console.log('抽出された勤務期間:', result);
+                return result;
+            } catch (error) {
+                console.error('勤務期間抽出エラー:', error);
+                return '';
+            }
         }
 
         /**
          * 勤務時間を抽出
          */
         static extractWorkTime() {
-            const timeElement = document.querySelector(SELECTORS.WORK_TIME);
-            if (!timeElement) return { startTime: '', endTime: '' };
+            try {
+                const timeElement = document.querySelector(SELECTORS.WORK_TIME);
+                if (!timeElement) {
+                    console.warn('勤務時間要素が見つかりませんでした');
+                    return { startTime: '', endTime: '' };
+                }
 
-            const timeText = timeElement.textContent.trim().replace(/\s/g, '');
-            const [startTime = '', endTime = ''] = timeText.split('-');
-            
-            return { startTime, endTime };
+                const timeText = timeElement.textContent.trim().replace(/\s/g, '');
+                const [startTime = '', endTime = ''] = timeText.split('-');
+                
+                const result = { startTime, endTime };
+                console.log('抽出された勤務時間:', result);
+                return result;
+            } catch (error) {
+                console.error('勤務時間抽出エラー:', error);
+                return { startTime: '', endTime: '' };
+            }
         }
 
         /**
          * 求人タイトルを抽出
          */
         static extractJobTitle() {
-            const jobTitleElement = document.querySelector(SELECTORS.JOB_TITLE);
-            return jobTitleElement ? 
-                jobTitleElement.textContent.trim() : 
-                'フルキャストのお仕事';
+            try {
+                const jobTitleElement = document.querySelector(SELECTORS.JOB_TITLE);
+                const result = jobTitleElement ? 
+                    jobTitleElement.textContent.trim() : 
+                    'フルキャストのお仕事';
+                console.log('抽出されたタイトル:', result);
+                return result;
+            } catch (error) {
+                console.error('タイトル抽出エラー:', error);
+                return 'フルキャストのお仕事';
+            }
         }
 
         /**
          * 地図URLを抽出
          */
         static extractLocationUrl() {
-            const mapLinkElement = document.querySelector(SELECTORS.MAP_URL);
-            return mapLinkElement ? mapLinkElement.href : '';
+            try {
+                const mapLinkElement = document.querySelector(SELECTORS.MAP_URL);
+                const result = mapLinkElement ? mapLinkElement.href : '';
+                console.log('抽出された地図URL:', result);
+                return result;
+            } catch (error) {
+                console.error('地図URL抽出エラー:', error);
+                return '';
+            }
         }
 
         /**
          * 備考（持ち物・服装）を抽出
          */
         static extractNotes() {
-            const belongingsElement = document.querySelector(SELECTORS.BELONGINGS);
-            const clothingElement = document.querySelector(SELECTORS.CLOTHING);
-            
-            const belongings = belongingsElement ? 
-                `持ち物: ${belongingsElement.textContent.trim()}` : '';
-            const clothing = clothingElement ? 
-                `服装: ${clothingElement.textContent.trim()}` : '';
-            
-            return [belongings, clothing].filter(Boolean).join('\n');
+            try {
+                // 持ち物を検索
+                const belongings = this.findTableCellByHeader('持ち物');
+                // 服装を検索
+                const clothing = this.findTableCellByHeader('服装');
+                
+                const belongingsText = belongings ? 
+                    `持ち物: ${belongings.textContent.trim()}` : '';
+                const clothingText = clothing ? 
+                    `服装: ${clothing.textContent.trim()}` : '';
+                
+                const result = [belongingsText, clothingText].filter(Boolean).join('\n');
+                console.log('抽出された備考:', result);
+                return result;
+            } catch (error) {
+                console.error('備考抽出エラー:', error);
+                return '';
+            }
+        }
+
+        /**
+         * テーブルヘッダーのテキストで対応するセルを検索
+         */
+        static findTableCellByHeader(headerText) {
+            try {
+                const thElements = document.querySelectorAll(SELECTORS.TABLE_HEADERS);
+                console.log(`${headerText}を検索中... テーブルヘッダー数: ${thElements.length}`);
+                
+                for (const th of thElements) {
+                    const thText = th.textContent.trim();
+                    console.log(`ヘッダーテキスト: "${thText}"`);
+                    
+                    if (thText.includes(headerText)) {
+                        console.log(`✅ ${headerText}のヘッダーを発見`);
+                        const nextCell = th.nextElementSibling;
+                        if (nextCell) {
+                            console.log(`✅ 対応するセルを発見: ${nextCell.textContent.trim()}`);
+                        }
+                        return nextCell;
+                    }
+                }
+                
+                console.warn(`❌ ${headerText}のヘッダーが見つかりませんでした`);
+                return null;
+            } catch (error) {
+                console.error(`テーブルセル検索エラー (${headerText}):`, error);
+                return null;
+            }
         }
     }
 
@@ -138,30 +221,40 @@
         static formatDateTime(date, time) {
             if (!date || !time) return '';
             
-            const [year, month, day] = date.split('/').map(s => s.padStart(2, '0'));
-            const [hour, minute] = time.split(':').map(s => s.padStart(2, '0'));
-            
-            return `${year}${month}${day}T${hour}${minute}00`;
+            try {
+                const [year, month, day] = date.split('/').map(s => s.padStart(2, '0'));
+                const [hour, minute] = time.split(':').map(s => s.padStart(2, '0'));
+                
+                return `${year}${month}${day}T${hour}${minute}00`;
+            } catch (error) {
+                console.error('日時フォーマットエラー:', error);
+                return '';
+            }
         }
 
         /**
          * Googleカレンダー登録URLを生成
          */
         static generateCalendarUrl(eventData) {
-            const { title, eventDate, startTime, endTime, notes, locationUrl } = eventData;
-            
-            const startDateTime = this.formatDateTime(eventDate, startTime);
-            const endDateTime = this.formatDateTime(eventDate, endTime);
+            try {
+                const { title, eventDate, startTime, endTime, notes, locationUrl } = eventData;
+                
+                const startDateTime = this.formatDateTime(eventDate, startTime);
+                const endDateTime = this.formatDateTime(eventDate, endTime);
 
-            const params = new URLSearchParams({
-                action: 'TEMPLATE',
-                text: title,
-                dates: `${startDateTime}/${endDateTime}`,
-                details: notes,
-                location: locationUrl
-            });
+                const params = new URLSearchParams({
+                    action: 'TEMPLATE',
+                    text: title,
+                    dates: `${startDateTime}/${endDateTime}`,
+                    details: notes,
+                    location: locationUrl
+                });
 
-            return `https://www.google.com/calendar/render?${params.toString()}`;
+                return `https://www.google.com/calendar/render?${params.toString()}`;
+            } catch (error) {
+                console.error('カレンダーURL生成エラー:', error);
+                return '';
+            }
         }
     }
 
@@ -188,12 +281,16 @@
          * ボタンをページに追加
          */
         static addButtonToPage(button) {
-            const container = document.querySelector(SELECTORS.CONTAINER);
-            if (container) {
-                container.prepend(button);
-                console.log('✅ カレンダー登録ボタンが追加されました。');
-            } else {
-                console.error('❌ ボタン配置用のコンテナが見つかりませんでした。');
+            try {
+                const container = document.querySelector(SELECTORS.CONTAINER);
+                if (container) {
+                    container.prepend(button);
+                    console.log('✅ カレンダー登録ボタンが追加されました。');
+                } else {
+                    console.error('❌ ボタン配置用のコンテナが見つかりませんでした。');
+                }
+            } catch (error) {
+                console.error('ボタン追加エラー:', error);
             }
         }
     }
@@ -206,22 +303,28 @@
          * アプリケーション実行
          */
         static run() {
-            console.log('🚀 Fullcast Calendar App を開始します...');
+            console.log('🚀 Fullcast Calendar App (Fixed Version) を開始します...');
             
-            // 要素チェック
-            ElementChecker.checkElements();
+            try {
+                // 要素チェック
+                ElementChecker.checkElements();
 
-            // データ抽出
-            const eventData = this.extractAllData();
-            console.log('📊 抽出されたデータ:', eventData);
+                // データ抽出
+                const eventData = this.extractAllData();
+                console.log('📊 抽出されたデータ:', eventData);
 
-            // カレンダーURL生成
-            const calendarUrl = CalendarUrlGenerator.generateCalendarUrl(eventData);
-            console.log('📅 生成されたカレンダーURL:', calendarUrl);
+                // カレンダーURL生成
+                const calendarUrl = CalendarUrlGenerator.generateCalendarUrl(eventData);
+                console.log('📅 生成されたカレンダーURL:', calendarUrl);
 
-            // UIにボタン追加
-            const button = UIManager.createCalendarButton(calendarUrl);
-            UIManager.addButtonToPage(button);
+                // UIにボタン追加
+                const button = UIManager.createCalendarButton(calendarUrl);
+                UIManager.addButtonToPage(button);
+                
+                console.log('✅ アプリケーション実行完了');
+            } catch (error) {
+                console.error('❌ アプリケーション実行エラー:', error);
+            }
         }
 
         /**
@@ -247,7 +350,9 @@
 
     // ページロード完了後にアプリケーション実行
     window.addEventListener('load', () => {
-        FullcastCalendarApp.run();
+        setTimeout(() => {
+            FullcastCalendarApp.run();
+        }, 1000); // 1秒待機してから実行
     });
 
 })();
