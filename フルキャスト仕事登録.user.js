@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Fullcast Job to Calendar
 // @namespace    http://tampermonkey.net/
-// @version      2.0
+// @version      2.1
 // @description  フルキャストの求人詳細ページから勤務情報を抽出し、カレンダー登録用のURLを生成します。
 // @author       Refactored
 // @match        https://fullcast.jp/flinkccpc/sc/ucas1008/*
@@ -17,7 +17,7 @@
     const SELECTORS = {
         WORK_PERIOD: '.job-detail-row:has(.job-detail-term) div',
         WORK_TIME: '.job-detail-row:has(.job-detail-time) div',
-        JOB_TITLE: '.job-title',
+        JOB_TITLE: '.job-title.mt-2',
         MAP_URL: '.job-traffic-info-box a.map',
         BELONGINGS: 'th:contains("持ち物") + td',
         CLOTHING: 'th:contains("服装") + td',
